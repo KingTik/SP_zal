@@ -25,5 +25,5 @@ make
 ```
 3. Run executable file:
 ```
-./sfml-app
+./sfml-app.out
 ```
