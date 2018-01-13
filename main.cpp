@@ -46,20 +46,53 @@ class McirophoneStream: public sf::SoundStream{
 
 
 
+
+
+
+
+
 int main()
 {
 
 
 
-    std::vector<std::string> availableDevices = sf::SoundRecorder::getAvailableDevices();
-    for(auto device: availableDevices ){
-        std::cout << device << std::endl;
-    }
+    // std::vector<std::string> availableDevices = sf::SoundRecorder::getAvailableDevices();
+    // for(auto device: availableDevices ){
+    //     std::cout << device << std::endl;
+    // }
 
 
-    sf::SoundBuffer buffer;
-    auto retVal = buffer.loadFromFile("groove.wav");
-    std::cout << retVal <<std::endl;
+    // sf::SoundBuffer buffer;
+    // auto retVal = buffer.loadFromFile("groove.wav");
+    // std::cout << retVal <<std::endl;
+    // McirophoneStream stream;
+    // stream.load(buffer);
+    // stream.play();
+
+
+    // while(stream.getStatus() == McirophoneStream::Playing)
+    //     sf::sleep(sf::seconds(0.1f));
+
+
+
+std::vector<std::string> avaibleDevices = sf::SoundBufferRecorder::getAvailableDevices();
+
+for(auto device: avaibleDevices){
+    std::cout << "Mic: " <<device << std::endl;
+}
+
+   std::cout << sf::SoundBufferRecorder::isAvailable() << std::endl;
+
+    sf::SoundBufferRecorder recorder;
+    auto success = recorder.setDevice(avaibleDevices[0]);
+
+    std::cout <<"recorder set device: " << success << std::endl;
+
+    recorder.start();
+    sf::sleep(sf::seconds(4.0f));
+    recorder.stop();
+    const sf::SoundBuffer& buffer = recorder.getBuffer();
+
     McirophoneStream stream;
     stream.load(buffer);
     stream.play();
@@ -67,5 +100,5 @@ int main()
 
     while(stream.getStatus() == McirophoneStream::Playing)
         sf::sleep(sf::seconds(0.1f));
-   
+
 }
