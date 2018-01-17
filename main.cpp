@@ -1,104 +1,134 @@
-#include <iostream>
-#include <SFML/System.hpp>
 #include <SFML/Audio.hpp>
-#include <vector>
+#include <SFML/Graphics.hpp>
+
+#include <atomic>
+#include <cassert>
+#include <mutex>
+#include <queue>
+#include <condition_variable>
 
 
-class McirophoneStream: public sf::SoundStream{
-
-    std::vector<sf::Int16> m_samples;
-    std::size_t m_currentSample;
-
-    public:
-    void load(const sf::SoundBuffer& buffer){
-        m_samples.assign(buffer.getSamples(), buffer.getSamples()+buffer.getSampleCount ());
-        m_currentSample = 0;
-        initialize(buffer.getChannelCount(), buffer.getSampleRate());
-
+// Useful to hold onto the memory when converting it into a Chunk.
+struct Samples {
+    Samples(sf::Int16 const* ss, std::size_t count) {
+        samples.reserve(count);
+        std::copy_n(ss, count, std::back_inserter(samples));
     }
 
-    private:
-    virtual bool onGetData(Chunk& data){
+    Samples() {}
 
-        const int samplesToStream = 50000;
-        data.samples = &m_samples[m_currentSample];
-        if (m_currentSample + samplesToStream <= m_samples.size())
-        {
-            // end not reached: stream the samples and continue
-            data.sampleCount = samplesToStream;
-            m_currentSample += samplesToStream;
-            return true;
-        }
-        else
-        {
-            // end of stream reached: stream the remaining samples and stop playback
-            data.sampleCount = m_samples.size() - m_currentSample;
-            m_currentSample = m_samples.size();
-            return false;
-        }
-
-    }
-
-    virtual void onSeek(sf::Time timeOffset){
-        // //left empty
-    }
+    std::vector<sf::Int16> samples;
 };
 
 
+class PlaybackRecorder : private sf::SoundRecorder, private sf::SoundStream {
+public: /** API **/
+
+    // Initialise capturing input & setup output
+    void start() {
+        sf::SoundRecorder::start();
+
+        sf::SoundStream::initialize(sf::SoundRecorder::getChannelCount(), sf::SoundRecorder::getSampleRate());
+        sf::SoundStream::play();
+    }
+
+    // Stop both recording & playback
+    void stop() {
+        sf::SoundRecorder::stop();
+        sf::SoundStream::stop();
+    }
+
+    bool isRunning() { return isRecording; }
 
 
+    ~PlaybackRecorder() {
+        stop();
+    }
 
 
+protected: /** OVERRIDING SoundRecorder **/
+
+    bool onProcessSamples(sf::Int16 const* samples, std::size_t sampleCount) override {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            data.emplace(samples, sampleCount);
+        }
+        cv.notify_one();
+        return true; // continue capture
+    }
+
+    bool onStart() override {
+        isRecording = true;
+        return true;
+    }
+
+    void onStop() override {
+        isRecording = false;
+        cv.notify_one();
+    }
 
 
-int main()
+protected: /** OVERRIDING SoundStream **/
+
+    bool onGetData(Chunk& chunk) override {
+        // Wait until either:
+        //  a) the recording was stopped
+        //  b) new data is available
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait(lock, [this]{ return !isRecording || !data.empty(); });
+
+        // Lock was acquired, examine which case we're into:
+        if (!isRecording) return false; // stop playing.
+        else {
+            assert(!data.empty());
+
+            playingSamples.samples = std::move(data.front().samples);
+            data.pop();
+            chunk.sampleCount = playingSamples.samples.size();
+            chunk.samples = playingSamples.samples.data();
+            return true;
+        }
+    }
+
+    void onSeek(sf::Time) override { /* Not supported, silently does nothing. */ }
+
+private:
+    std::atomic<bool> isRecording{false};
+    std::mutex mutex; // protects `data`
+    std::condition_variable cv; // notify consumer thread of new samples
+    std::queue<Samples> data; // samples come in from the recorder, and popped by the output stream
+    Samples playingSamples; // used by the output stream.
+};
+
+int main(int, char const**)
 {
+    sf::RenderWindow window(sf::VideoMode(800, 600), "SFML PlayBack");
 
+    if (!sf::SoundRecorder::isAvailable()) {
+        return EXIT_FAILURE;
+    }
 
+    PlaybackRecorder input;
+    input.start();
 
-    // std::vector<std::string> availableDevices = sf::SoundRecorder::getAvailableDevices();
-    // for(auto device: availableDevices ){
-    //     std::cout << device << std::endl;
-    // }
+    while (window.isOpen())
+    {
+        sf::Event event;
+        while (window.pollEvent(event))
+        {
+            if (event.type == sf::Event::Closed) {
+                window.close();
+            }
 
+            if (event.type == sf::Event::KeyPressed) {
+                if (input.isRunning()) input.stop();
+                else input.start();
+            }
+        }
 
-    // sf::SoundBuffer buffer;
-    // auto retVal = buffer.loadFromFile("groove.wav");
-    // std::cout << retVal <<std::endl;
-    // McirophoneStream stream;
-    // stream.load(buffer);
-    // stream.play();
+        window.clear(input.isRunning() ? sf::Color::White : sf::Color::Black);
+        window.display();
+    }
 
-
-    // while(stream.getStatus() == McirophoneStream::Playing)
-    //     sf::sleep(sf::seconds(0.1f));
-
-
-
-std::vector<std::string> avaibleDevices = sf::SoundBufferRecorder::getAvailableDevices();
-
-for(auto device: avaibleDevices){
-    std::cout << "Mic: " <<device << std::endl;
-}
-
-   std::cout << sf::SoundBufferRecorder::isAvailable() << std::endl;
-
-    sf::SoundBufferRecorder recorder;
-    auto success = recorder.setDevice(avaibleDevices[0]);
-
-    std::cout <<"recorder set device: " << success << std::endl;
-
-    recorder.start();
-    sf::sleep(sf::seconds(4.0f));
-    recorder.stop();
-    const sf::SoundBuffer& buffer = recorder.getBuffer();
-
-    McirophoneStream stream;
-    stream.load(buffer);
-    stream.play();
-
-
-    while(stream.getStatus() == McirophoneStream::Playing)
-        sf::sleep(sf::seconds(0.1f));
-
+    return EXIT_SUCCESS;
 }
