@@ -87,8 +87,28 @@ protected:
 
 };
 
+struct Effect{
+    virtual void addEffect(PlaybackRecorder& obj ) = 0;
+};
+
+struct HighPitchEffect: Effect{
+    virtual void addEffect(PlaybackRecorder& obj ){
+        obj.setPitch(1.5);
+    }
+};
+
+struct LowPitchEffect: Effect{
+    virtual void addEffect(PlaybackRecorder& obj ){
+        obj.setPitch(0.8);
+    }
+};
+
+
+
+
 class Button : public sf::RectangleShape{
     std::string name = "";
+    Effect *buttonsEfect = nullptr;
     public:
     Button(sf::Vector2f XY){
         this->setSize(XY);
@@ -109,6 +129,15 @@ class Button : public sf::RectangleShape{
     auto getName() const{
         return this->name;
     }
+
+    void addEffect(Effect *newEffect){
+        this->buttonsEfect = newEffect;
+    }
+
+    void apply(PlaybackRecorder& obj ){
+        if(this->buttonsEfect != nullptr)
+        this->buttonsEfect->addEffect(obj);
+    }
 };
 
 
@@ -117,10 +146,12 @@ int main(int, char const**)
     sf::RenderWindow window(sf::VideoMode(800, 600), "Add effect");
     Button HighPitch(sf::Vector2f(60,60));
     HighPitch.setName("HighPitch");
+    HighPitch.addEffect(new HighPitchEffect());
     HighPitch.setPosition(0, 80);
     Button LowPitch(sf::Vector2f(60,60));
     LowPitch.setPosition(80, 80);
     LowPitch.setName("LowPitch");
+    LowPitch.addEffect(new LowPitchEffect());
 
     std::vector<Button> buttons = { HighPitch, LowPitch};
 
@@ -139,12 +170,11 @@ int main(int, char const**)
 
             if(event.type == sf::Event::MouseButtonPressed){
                 if(event.mouseButton.button == sf::Mouse::Left){
-                    // std::cout << "the left button was pressed" << std::endl;
-                    // std::cout << "mouse x: " << event.mouseButton.x << std::endl;
-                    // std::cout << "mouse y: " << event.mouseButton.y << std::endl;
+         
                     for(auto but: buttons){
                         if(but.isPressed(event.mouseButton.x, event.mouseButton.y)){
                             std::cout <<"Clicked " << but.getName() <<std::endl;
+                            but.apply(input);
                         }
                     }
                 
