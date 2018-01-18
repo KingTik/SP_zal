@@ -6,6 +6,8 @@
 #include <queue>
 #include <vector>
 #include <condition_variable>
+#include <iostream>
+#include <string>
 
 struct Samples {
     std::vector<sf::Int16> samples;
@@ -15,10 +17,6 @@ struct Samples {
         samples.reserve(count);
         std::copy_n(ss, count, std::back_inserter(samples));
     }
-
-    
-
-
 };
 
 
@@ -72,14 +70,11 @@ protected:
         std::unique_lock<std::mutex> lock(mutex);
         cv.wait(lock, [this]{ return  !data.empty(); });
 
-
-            assert(!data.empty());
-
-            playingSamples.samples = std::move(data.front().samples);
-            data.pop();
-            chunk.sampleCount = playingSamples.samples.size();
-            chunk.samples = playingSamples.samples.data();
-            return true;
+        playingSamples.samples = std::move(data.front().samples);
+        data.pop();
+        chunk.sampleCount = playingSamples.samples.size();
+        chunk.samples = playingSamples.samples.data();
+        return true;
         
     }
 
@@ -92,14 +87,42 @@ protected:
 
 };
 
+class Button : public sf::RectangleShape{
+    std::string name = "";
+    public:
+    Button(sf::Vector2f XY){
+        this->setSize(XY);
+    }
+
+    bool isPressed(int x, int y){
+
+        auto bounds = this->getGlobalBounds();
+
+        return bounds.contains(x,y);
+
+    }
+
+    void setName(std::string newName){
+        this->name = newName;
+    }
+
+    auto getName() const{
+        return this->name;
+    }
+};
+
+
 int main(int, char const**)
 {
     sf::RenderWindow window(sf::VideoMode(800, 600), "Add effect");
-    sf::RectangleShape HighPitch(sf::Vector2f(60,60));
-    HighPitch.setPosition(0, 62);
-    sf::RectangleShape LowPitch(sf::Vector2f(60,60));
+    Button HighPitch(sf::Vector2f(60,60));
+    HighPitch.setName("HighPitch");
+    HighPitch.setPosition(0, 80);
+    Button LowPitch(sf::Vector2f(60,60));
+    LowPitch.setPosition(80, 80);
+    LowPitch.setName("LowPitch");
 
-    std::vector<sf::RectangleShape> buttons = { HighPitch, LowPitch};
+    std::vector<Button> buttons = { HighPitch, LowPitch};
 
     PlaybackRecorder input;
     input.start();
@@ -114,6 +137,21 @@ int main(int, char const**)
                 window.close();
             }
 
+            if(event.type == sf::Event::MouseButtonPressed){
+                if(event.mouseButton.button == sf::Mouse::Left){
+                    // std::cout << "the left button was pressed" << std::endl;
+                    // std::cout << "mouse x: " << event.mouseButton.x << std::endl;
+                    // std::cout << "mouse y: " << event.mouseButton.y << std::endl;
+                    for(auto but: buttons){
+                        if(but.isPressed(event.mouseButton.x, event.mouseButton.y)){
+                            std::cout <<"Clicked " << but.getName() <<std::endl;
+                        }
+                    }
+                
+                }
+
+
+            }
 
 
         }
